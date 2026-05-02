@@ -1164,5 +1164,17 @@
 		"status": "active",
 		"createdAt": "2026-05-02T19:19:33.884Z",
 		"completedAt": null
+	},
+	{
+		"id": "group-2540067f",
+		"name": "ui-polish-wave-2",
+		"memberIssueIds": [
+			"overstory-ac63",
+			"overstory-aca3",
+			"overstory-4709"
+		],
+		"status": "active",
+		"createdAt": "2026-05-02T19:49:04.701Z",
+		"completedAt": null
 	}
 ]
