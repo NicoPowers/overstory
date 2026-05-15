@@ -5,6 +5,7 @@ import type { OverstoryConfig } from "../types.ts";
 import { AiderRuntime } from "./aider.ts";
 import { AmpRuntime } from "./amp.ts";
 import { ClaudeRuntime } from "./claude.ts";
+import { ClaudeSbxRuntime } from "./claude-sbx.ts";
 import { CodexRuntime } from "./codex.ts";
 import { CopilotRuntime } from "./copilot.ts";
 import { CursorRuntime } from "./cursor.ts";
@@ -20,6 +21,7 @@ const runtimes = new Map<string, () => AgentRuntime>([
 	["aider", () => new AiderRuntime()],
 	["amp", () => new AmpRuntime()],
 	["claude", () => new ClaudeRuntime()],
+	["claude-sbx", () => new ClaudeSbxRuntime()],
 	["codex", () => new CodexRuntime()],
 	["copilot", () => new CopilotRuntime()],
 	["cursor", () => new CursorRuntime()],
@@ -44,6 +46,7 @@ export function getAllRuntimes(): AgentRuntime[] {
 		new AiderRuntime(),
 		new AmpRuntime(),
 		new ClaudeRuntime(),
+		new ClaudeSbxRuntime(),
 		new CodexRuntime(),
 		new CopilotRuntime(),
 		new CursorRuntime(),

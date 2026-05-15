@@ -263,4 +263,20 @@ export interface AgentRuntime {
 	 * Used by runtimes that need environment setup (e.g., Copilot folder trust).
 	 */
 	prepareWorktree?(worktreePath: string): Promise<void>;
+
+	/**
+	 * Optional: tear down runtime-specific resources for an agent.
+	 *
+	 * Called by `ov stop <agent-name>` after the per-agent process tree (or
+	 * tmux session) has been terminated. Runtimes that wrap an external
+	 * lifecycle (VM, container, sandbox) implement this to release that
+	 * resource. The host process kill alone is not sufficient — for example,
+	 * the claude-sbx runtime needs to issue `sbx stop` + `sbx rm`.
+	 *
+	 * Implementations MUST be idempotent and best-effort. Errors must not
+	 * propagate (callers swallow exceptions silently to keep `ov stop`
+	 * non-fatal). Runtimes that have no external resource (Claude, Codex,
+	 * Pi, ...) omit this method.
+	 */
+	stopAgent?(agentName: string): Promise<void>;
 }

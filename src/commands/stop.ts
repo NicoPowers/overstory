@@ -19,6 +19,7 @@ import { AgentError, ValidationError } from "../errors.ts";
 import { jsonOutput } from "../json.ts";
 import { printSuccess, printWarning } from "../logging/color.ts";
 import { createMailStore } from "../mail/store.ts";
+import { getRuntime } from "../runtimes/registry.ts";
 import { openSessionStore } from "../sessions/compat.ts";
 import type { MergeReadyPayload } from "../types.ts";
 import { readPidFile } from "../utils/pid.ts";
@@ -101,6 +102,26 @@ function buildLeadCompletedSubject(agentName: string, mailDbPath: string): strin
 		return `Lead ${agentName} sent merge_ready for branch ${mergeReadyBranches[0]}`;
 	}
 	return `Lead ${agentName} sent ${mergeReadyBranches.length} merge_ready (branches: ${mergeReadyBranches.join(", ")})`;
+}
+
+/**
+ * Read the per-agent runtime marker written by `ov sling`. Returns the
+ * runtime name (e.g. "claude", "claude-sbx") or null if the marker is
+ * absent / unreadable. Used by `ov stop` to dispatch to the runtime's
+ * optional `stopAgent()` hook (e.g. tear down an sbx VM).
+ *
+ * Defaulting is the caller's responsibility — null is a real signal that
+ * the marker is missing (legacy agent or write race).
+ */
+async function readAgentRuntime(overstoryDir: string, agentName: string): Promise<string | null> {
+	try {
+		const file = Bun.file(join(overstoryDir, "agents", agentName, "runtime"));
+		if (!(await file.exists())) return null;
+		const text = (await file.text()).trim();
+		return text.length > 0 ? text : null;
+	} catch {
+		return null;
+	}
 }
 
 /** Delete a git branch (best-effort, non-fatal). */
@@ -205,6 +226,21 @@ export async function stopCommand(
 					await tmux.killSession(session.tmuxSession);
 					tmuxKilled = true;
 				}
+			}
+
+			// Tear down runtime-specific resources (e.g. sbx VM). Looked up via
+			// the per-agent runtime marker, falling back to "claude" for legacy
+			// agents written before sling started persisting the marker. The
+			// hook is optional and best-effort — failures must not block stop.
+			try {
+				const runtimeName = (await readAgentRuntime(overstoryDir, agentName)) ?? "claude";
+				const runtime = getRuntime(runtimeName, config);
+				if (runtime.stopAgent) {
+					await runtime.stopAgent(agentName);
+				}
+			} catch {
+				// Non-fatal: stop must succeed even if the runtime is unknown
+				// (e.g. agent created with a runtime that has since been removed).
 			}
 
 			// Mark session as completed via the guarded transition. `completed` is

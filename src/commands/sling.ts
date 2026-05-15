@@ -1052,6 +1052,19 @@ export async function slingCommand(taskId: string, opts: SlingOptions): Promise<
 				});
 			}
 
+			// 11a-bis. Persist the runtime name so `ov stop` can dispatch to the
+			// runtime's optional `stopAgent()` hook without inspecting the live
+			// process. Per-agent `runtime` marker file in the same directory as
+			// identity.yaml. Write is best-effort: stop falls back to assuming
+			// the default "claude" runtime when the marker is absent (legacy
+			// agents created before this file existed).
+			try {
+				const runtimeMarkerPath = join(identityBaseDir, name, "runtime");
+				await Bun.write(runtimeMarkerPath, `${runtime.id}\n`);
+			} catch {
+				// Non-fatal: stop will degrade gracefully.
+			}
+
 			// 11b. Save applied mulch record IDs for session-end outcome tracking.
 			// Written to .overstory/agents/{name}/applied-records.json so log.ts
 			// can append outcomes when the session completes.

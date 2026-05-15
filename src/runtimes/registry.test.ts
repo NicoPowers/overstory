@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { OverstoryConfig } from "../types.ts";
 import { ClaudeRuntime } from "./claude.ts";
+import { ClaudeSbxRuntime } from "./claude-sbx.ts";
 import { CodexRuntime } from "./codex.ts";
 import { CopilotRuntime } from "./copilot.ts";
 import { CursorRuntime } from "./cursor.ts";
@@ -24,8 +25,27 @@ describe("getRuntime", () => {
 
 	it("throws with a helpful message for an unknown runtime", () => {
 		expect(() => getRuntime("unknown-runtime")).toThrow(
-			'Unknown runtime: "unknown-runtime". Available: aider, amp, claude, codex, copilot, cursor, gemini, goose, opencode, pi, sapling',
+			'Unknown runtime: "unknown-runtime". Available: aider, amp, claude, claude-sbx, codex, copilot, cursor, gemini, goose, opencode, pi, sapling',
 		);
+	});
+
+	it("returns a ClaudeSbxRuntime when name is 'claude-sbx'", () => {
+		const runtime = getRuntime("claude-sbx");
+		expect(runtime).toBeInstanceOf(ClaudeSbxRuntime);
+		expect(runtime.id).toBe("claude-sbx");
+	});
+
+	it("uses config.runtime.default 'claude-sbx' when name is omitted", () => {
+		const config = { runtime: { default: "claude-sbx" } } as OverstoryConfig;
+		const runtime = getRuntime(undefined, config);
+		expect(runtime).toBeInstanceOf(ClaudeSbxRuntime);
+		expect(runtime.id).toBe("claude-sbx");
+	});
+
+	it("claude-sbx runtime returns a new instance on each call", () => {
+		const a = getRuntime("claude-sbx");
+		const b = getRuntime("claude-sbx");
+		expect(a).not.toBe(b);
 	});
 
 	it("uses config.runtime.default when name is omitted", () => {
