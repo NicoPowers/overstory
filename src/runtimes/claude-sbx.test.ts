@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveSbxKitPaths } from "../commands/sling.ts";
 import { ClaudeRuntime } from "./claude.ts";
 import {
 	buildSbxExecArgv,
@@ -461,5 +462,178 @@ describe("ClaudeSbxRuntime", () => {
 			expect(calls[0]).toEqual(["stop", "builder-baz"]);
 			expect(calls[1]).toEqual(["rm", "builder-baz"]);
 		});
+	});
+
+	describe("setKitPaths / kitPaths", () => {
+		it("defaults to an empty kit list", () => {
+			const r = new ClaudeSbxRuntime();
+			expect(r.kitPaths).toEqual([]);
+		});
+
+		it("setKitPaths replaces the list", () => {
+			const r = new ClaudeSbxRuntime();
+			r.setKitPaths(["/kits/base", "/kits/network-strict"]);
+			expect(r.kitPaths).toEqual(["/kits/base", "/kits/network-strict"]);
+		});
+
+		it("setKitPaths with empty list clears previous entries", () => {
+			const r = new ClaudeSbxRuntime();
+			r.setKitPaths(["/kits/base"]);
+			r.setKitPaths([]);
+			expect(r.kitPaths).toEqual([]);
+		});
+	});
+
+	describe("prepareWorktree with kits (fake shim)", () => {
+		let ctx: ShimContext;
+		beforeEach(async () => {
+			ctx = await installSbxShim();
+		});
+		afterEach(async () => {
+			await uninstallSbxShim(ctx);
+		});
+
+		it("passes --kit flags to sbx create in declaration order", async () => {
+			process.env.SBX_FAKE_STDOUT = "[]"; // ls: no existing VM
+			process.env.SBX_FAKE_EXIT = "0";
+
+			const r = new ClaudeSbxRuntime();
+			r.setKitPaths(["/kits/base", "/kits/read-only", "/kits/network-strict"]);
+
+			const worktree =
+				process.platform === "win32"
+					? "C:\\Users\\nicol\\worktrees\\scout-task-7"
+					: "/tmp/wt/scout-task-7";
+			await r.prepareWorktree(worktree);
+
+			const calls = await readShimCalls(ctx);
+			const create = calls.find((c) => c[0] === "create");
+			expect(create).toBeDefined();
+			if (!create) return;
+			// Kit flags must appear before the template name in the correct order.
+			const kitIdx = create.indexOf("--kit");
+			expect(kitIdx).toBeGreaterThan(-1);
+			expect(create[kitIdx + 1]).toBe("/kits/base");
+			expect(create[kitIdx + 2]).toBe("--kit");
+			expect(create[kitIdx + 3]).toBe("/kits/read-only");
+			expect(create[kitIdx + 4]).toBe("--kit");
+			expect(create[kitIdx + 5]).toBe("/kits/network-strict");
+		});
+
+		it("passes no --kit flags when kitPaths is empty (--no-sandbox / bare template)", async () => {
+			process.env.SBX_FAKE_STDOUT = "[]";
+			process.env.SBX_FAKE_EXIT = "0";
+
+			const r = new ClaudeSbxRuntime();
+			// kitPaths defaults to [] — bare template
+
+			const worktree =
+				process.platform === "win32"
+					? "C:\\Users\\nicol\\worktrees\\builder-bare"
+					: "/tmp/wt/builder-bare";
+			await r.prepareWorktree(worktree);
+
+			const calls = await readShimCalls(ctx);
+			const create = calls.find((c) => c[0] === "create");
+			expect(create).toBeDefined();
+			expect(create).not.toContain("--kit");
+		});
+
+		it("passes two --kit flags for builder capability (base + network-dev)", async () => {
+			process.env.SBX_FAKE_STDOUT = "[]";
+			process.env.SBX_FAKE_EXIT = "0";
+
+			const r = new ClaudeSbxRuntime();
+			r.setKitPaths(["/kits/base", "/kits/network-dev"]);
+
+			const worktree =
+				process.platform === "win32"
+					? "C:\\Users\\nicol\\worktrees\\builder-task-9"
+					: "/tmp/wt/builder-task-9";
+			await r.prepareWorktree(worktree);
+
+			const calls = await readShimCalls(ctx);
+			const create = calls.find((c) => c[0] === "create");
+			expect(create).toBeDefined();
+			if (!create) return;
+			// Exactly two --kit occurrences.
+			const kitCount = create.filter((arg) => arg === "--kit").length;
+			expect(kitCount).toBe(2);
+			const firstKitIdx = create.indexOf("--kit");
+			expect(create[firstKitIdx + 1]).toBe("/kits/base");
+			expect(create[firstKitIdx + 3]).toBe("/kits/network-dev");
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// resolveSbxKitPaths — unit tests for the sling helper
+// ---------------------------------------------------------------------------
+
+describe("resolveSbxKitPaths", () => {
+	const fakeTemplatesDir = "/pkg/templates";
+
+	it("returns empty list when --no-sandbox is set", () => {
+		expect(
+			resolveSbxKitPaths({
+				noSandbox: true,
+				manifestKits: ["base", "read-only"],
+				pkgTemplatesDir: fakeTemplatesDir,
+			}),
+		).toEqual([]);
+	});
+
+	it("--kit replaces the manifest list", () => {
+		const result = resolveSbxKitPaths({
+			kit: ["/custom/kit-a"],
+			manifestKits: ["base", "network-strict"],
+			pkgTemplatesDir: fakeTemplatesDir,
+		});
+		expect(result).toEqual(["/custom/kit-a"]);
+	});
+
+	it("resolves manifest kit names to absolute package paths", () => {
+		const result = resolveSbxKitPaths({
+			manifestKits: ["base", "network-strict"],
+			pkgTemplatesDir: fakeTemplatesDir,
+		});
+		expect(result).toEqual([
+			join(fakeTemplatesDir, "sbx-kits", "base"),
+			join(fakeTemplatesDir, "sbx-kits", "network-strict"),
+		]);
+	});
+
+	it("--add-kit appends to manifest-resolved paths", () => {
+		const result = resolveSbxKitPaths({
+			manifestKits: ["base"],
+			addKit: ["/extra/kit"],
+			pkgTemplatesDir: fakeTemplatesDir,
+		});
+		expect(result).toEqual([join(fakeTemplatesDir, "sbx-kits", "base"), "/extra/kit"]);
+	});
+
+	it("--add-kit appends to --kit paths (not manifest)", () => {
+		const result = resolveSbxKitPaths({
+			kit: ["/override"],
+			addKit: ["/extra"],
+			manifestKits: ["base"],
+			pkgTemplatesDir: fakeTemplatesDir,
+		});
+		expect(result).toEqual(["/override", "/extra"]);
+	});
+
+	it("returns empty list when no kits specified and manifest has none", () => {
+		expect(resolveSbxKitPaths({ pkgTemplatesDir: fakeTemplatesDir })).toEqual([]);
+	});
+
+	it("--no-sandbox overrides --kit and --add-kit", () => {
+		expect(
+			resolveSbxKitPaths({
+				noSandbox: true,
+				kit: ["/should-be-ignored"],
+				addKit: ["/also-ignored"],
+				pkgTemplatesDir: fakeTemplatesDir,
+			}),
+		).toEqual([]);
 	});
 });

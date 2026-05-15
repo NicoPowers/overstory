@@ -17,7 +17,14 @@
 			"canSpawn": false,
 			"constraints": [
 				"read-only"
-			]
+			],
+			"sandbox": {
+				"kits": [
+					"base",
+					"read-only",
+					"network-strict"
+				]
+			}
 		},
 		"builder": {
 			"file": "builder.md",
@@ -36,7 +43,13 @@
 				"fix"
 			],
 			"canSpawn": false,
-			"constraints": []
+			"constraints": [],
+			"sandbox": {
+				"kits": [
+					"base",
+					"network-dev"
+				]
+			}
 		},
 		"reviewer": {
 			"file": "reviewer.md",
@@ -54,7 +67,14 @@
 			"canSpawn": false,
 			"constraints": [
 				"read-only"
-			]
+			],
+			"sandbox": {
+				"kits": [
+					"base",
+					"read-only",
+					"network-strict"
+				]
+			}
 		},
 		"lead": {
 			"file": "lead.md",
@@ -74,7 +94,13 @@
 				"review"
 			],
 			"canSpawn": true,
-			"constraints": []
+			"constraints": [],
+			"sandbox": {
+				"kits": [
+					"base",
+					"network-dev"
+				]
+			}
 		},
 		"merger": {
 			"file": "merger.md",
@@ -92,7 +118,13 @@
 				"resolve-conflicts"
 			],
 			"canSpawn": false,
-			"constraints": []
+			"constraints": [],
+			"sandbox": {
+				"kits": [
+					"base",
+					"network-strict"
+				]
+			}
 		},
 		"coordinator": {
 			"file": "coordinator.md",

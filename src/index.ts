@@ -311,6 +311,22 @@ program
 		"--recover",
 		"Allow dispatch against a task in any tracker status (e.g. closed). Use when a prior owner exited and the task needs a fresh agent.",
 	)
+	.option(
+		"--kit <path>",
+		"Absolute path to an sbx kit directory (repeatable). Replaces the manifest sandbox.kits list. Only applies to --runtime claude-sbx.",
+		(v: string, acc: string[]) => [...acc, v],
+		[] as string[],
+	)
+	.option(
+		"--add-kit <path>",
+		"Absolute path to an sbx kit directory to append to the resolved kit list (repeatable). Only applies to --runtime claude-sbx.",
+		(v: string, acc: string[]) => [...acc, v],
+		[] as string[],
+	)
+	.option(
+		"--no-sandbox",
+		"Skip all sbx kits — spawn the bare template with no --kit flags. Debug/escape hatch for --runtime claude-sbx.",
+	)
 	.option("--json", "Output result as JSON")
 	.action(async (taskId, opts) => {
 		await slingCommand(taskId, opts);

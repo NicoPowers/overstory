@@ -1,0 +1,31 @@
+schemaVersion: "1"
+kind: mixin
+name: overstory-base
+displayName: Overstory Base
+description: |
+  Installs Bun and wires the Anthropic credential via the proxy-managed pattern.
+  Required by every overstory agent — provides bun:sqlite access and ensures
+  ANTHROPIC_API_KEY never lands in the VM as a real value.
+
+commands:
+  install:
+    - command: "curl -fsSL https://bun.sh/install | bash -s 'bun-v1.3.14'"
+      user: "1000"
+    - command: "/home/agent/.bun/bin/bun install -g overstory"
+      user: "1000"
+
+network:
+  serviceDomains:
+    api.anthropic.com: anthropic
+  serviceAuth:
+    anthropic:
+      headerName: Authorization
+      valueFormat: "Bearer %s"
+
+credentials:
+  sources:
+    anthropic:
+      env: [ANTHROPIC_API_KEY]
+
+environment:
+  proxyManaged: [ANTHROPIC_API_KEY]

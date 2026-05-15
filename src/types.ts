@@ -167,6 +167,10 @@ export interface AgentDefinition {
 	capabilities: string[]; // What this agent can do
 	canSpawn: boolean; // Can this agent spawn sub-workers?
 	constraints: string[]; // Machine-readable restrictions
+	sandbox?: {
+		/** Kit directory names under templates/sbx-kits/ composed at sbx create time. */
+		kits: string[];
+	};
 }
 
 /** All valid agent capability types. Used for compile-time validation. */

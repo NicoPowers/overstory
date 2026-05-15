@@ -1,0 +1,15 @@
+schemaVersion: "1"
+kind: mixin
+name: overstory-network-dev
+displayName: Overstory Network Dev
+description: |
+  Extends network access with npm registries and GitHub for builder and lead
+  agents that need to install packages or clone repositories during task work.
+
+network:
+  allowedDomains:
+    - api.anthropic.com
+    - "*.npmjs.org"
+    - registry.npmjs.org
+    - github.com
+    - api.github.com

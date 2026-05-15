@@ -227,22 +227,37 @@ export class ClaudeSbxRuntime implements AgentRuntime {
 
 	/**
 	 * sbx template used by `prepareWorktree` when creating the VM.
-	 *
-	 * Tracer 2 uses sbx's built-in `claude` agent (which resolves to
-	 * `docker/sandbox-templates:claude-code-docker` — already has the
-	 * `claude` CLI and OAuth env wiring). Bun is the only thing missing;
-	 * that is patched in by `templates/sbx/Dockerfile.base` for operators
-	 * who want `bun:sqlite` access from inside the VM. Tracer 3 will swap
-	 * this for a kit-based provisioning flow.
-	 *
 	 * Override via the `OVERSTORY_SBX_TEMPLATE` env var.
 	 */
 	private readonly defaultTemplate = "claude";
 
 	private readonly inner: ClaudeRuntime;
 
+	/**
+	 * Absolute paths to kit directories passed as `--kit <path>` flags to
+	 * `sbx create`. Populated by `sling` from the manifest `sandbox.kits`
+	 * field (resolved to the package's `templates/sbx-kits/` dir) plus any
+	 * `--kit` / `--add-kit` / `--no-sandbox` overrides.
+	 *
+	 * Empty list = no kits (bare template only, same as pre-Tracer-3 behaviour).
+	 */
+	private _kitPaths: string[] = [];
+
 	constructor(inner: ClaudeRuntime = new ClaudeRuntime()) {
 		this.inner = inner;
+	}
+
+	/**
+	 * Replace the kit path list for this runtime instance.
+	 * Called by `ov sling` after resolving manifest defaults + CLI overrides.
+	 */
+	setKitPaths(paths: string[]): void {
+		this._kitPaths = [...paths];
+	}
+
+	/** Read-only view of the current kit path list. */
+	get kitPaths(): readonly string[] {
+		return this._kitPaths;
 	}
 
 	private get template(): string {
@@ -329,11 +344,26 @@ export class ClaudeSbxRuntime implements AgentRuntime {
 
 		if (await sbxVmExists(agentName)) return;
 
+		// Build the sbx create argv. Kit paths are interleaved as
+		// `--kit <path>` flags before the template name so sbx applies
+		// them in declaration order (base → capability-specific).
+		const kitArgs: string[] = [];
+		for (const kitPath of this._kitPaths) {
+			kitArgs.push("--kit", kitPath);
+		}
+
 		// `sbx create` provisions the VM in stopped state with the workspace
 		// mount available at the translated path. Subsequent `sbx exec`
 		// calls bring it up briefly (Tracer 1 spike §4) — keeping the VM
 		// truly warm across turns is a Tracer 6 optimization.
-		const result = await runSbx(["create", "--name", agentName, this.template, worktreePath]);
+		const result = await runSbx([
+			"create",
+			"--name",
+			agentName,
+			...kitArgs,
+			this.template,
+			worktreePath,
+		]);
 		if (result.exitCode !== 0) {
 			throw new Error(
 				`claude-sbx: failed to create VM "${agentName}" via sbx (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`,

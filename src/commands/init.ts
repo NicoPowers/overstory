@@ -388,6 +388,7 @@ export function buildAgentManifest(): AgentManifest {
 			capabilities: ["explore", "research"],
 			canSpawn: false,
 			constraints: ["read-only"],
+			sandbox: { kits: ["base", "read-only", "network-strict"] },
 		},
 		builder: {
 			file: "builder.md",
@@ -396,6 +397,7 @@ export function buildAgentManifest(): AgentManifest {
 			capabilities: ["implement", "refactor", "fix"],
 			canSpawn: false,
 			constraints: [],
+			sandbox: { kits: ["base", "network-dev"] },
 		},
 		reviewer: {
 			file: "reviewer.md",
@@ -404,6 +406,7 @@ export function buildAgentManifest(): AgentManifest {
 			capabilities: ["review", "validate"],
 			canSpawn: false,
 			constraints: ["read-only"],
+			sandbox: { kits: ["base", "read-only", "network-strict"] },
 		},
 		lead: {
 			file: "lead.md",
@@ -412,6 +415,7 @@ export function buildAgentManifest(): AgentManifest {
 			capabilities: ["coordinate", "implement", "review"],
 			canSpawn: true,
 			constraints: [],
+			sandbox: { kits: ["base", "network-dev"] },
 		},
 		merger: {
 			file: "merger.md",
@@ -420,6 +424,7 @@ export function buildAgentManifest(): AgentManifest {
 			capabilities: ["merge", "resolve-conflicts"],
 			canSpawn: false,
 			constraints: [],
+			sandbox: { kits: ["base", "network-strict"] },
 		},
 		coordinator: {
 			file: "coordinator.md",

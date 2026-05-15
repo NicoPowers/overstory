@@ -1,0 +1,14 @@
+schemaVersion: "1"
+kind: mixin
+name: overstory-read-only
+displayName: Overstory Read-Only
+description: |
+  Makes the mounted workspace read-only for scout and reviewer agents.
+  Runs chmod -R a-w on the workspace at creation time so the agent cannot
+  write to the worktree even with bypassPermissions active.
+
+commands:
+  install:
+    # WORKDIR is substituted by sbx with the mounted workspace path.
+    - command: "chmod -R a-w \"${WORKDIR}\""
+      user: "0"

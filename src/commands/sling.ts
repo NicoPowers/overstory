@@ -34,6 +34,7 @@ import { printSuccess } from "../logging/color.ts";
 import { createMailClient } from "../mail/client.ts";
 import { createMailStore } from "../mail/store.ts";
 import { createMulchClient } from "../mulch/client.ts";
+import { ClaudeSbxRuntime } from "../runtimes/claude-sbx.ts";
 import { getRuntime } from "../runtimes/registry.ts";
 import { openSessionStore } from "../sessions/compat.ts";
 import { createRunStore } from "../sessions/store.ts";
@@ -165,6 +166,24 @@ export interface SlingOptions {
 	 * guidance.
 	 */
 	siblings?: string;
+	/**
+	 * Absolute paths to sbx kit directories (repeatable). When provided,
+	 * **replaces** the manifest `sandbox.kits` list entirely. Only meaningful
+	 * for `--runtime claude-sbx`; silently ignored for other runtimes.
+	 */
+	kit?: string[];
+	/**
+	 * Absolute paths to sbx kit directories to **append** to the manifest list.
+	 * Processed after `--kit` (i.e. if `--kit` was given, appends to that list
+	 * rather than the manifest list). Only meaningful for `--runtime claude-sbx`.
+	 */
+	addKit?: string[];
+	/**
+	 * When true, skip all kits entirely — spawn the bare sbx template with no
+	 * `--kit` flags. Useful as a debug/escape hatch. Mutually exclusive with
+	 * `--kit` / `--add-kit`.
+	 */
+	noSandbox?: boolean;
 }
 
 /**
@@ -179,6 +198,50 @@ export function parseSiblings(raw: string | undefined): string[] {
 		.split(",")
 		.map((s) => s.trim())
 		.filter((s) => s.length > 0);
+}
+
+/**
+ * Resolve the absolute kit paths to pass to `ClaudeSbxRuntime.setKitPaths()`.
+ *
+ * Resolution order:
+ *   1. `--no-sandbox` → empty list (bare template, no kits).
+ *   2. `--kit <path>` (repeatable) → those paths replace the manifest list.
+ *   3. Manifest `sandbox.kits` names → resolved to `<pkgTemplatesDir>/sbx-kits/<name>`.
+ * Then `--add-kit <path>` (repeatable) is appended to whichever list was built above.
+ *
+ * `pkgTemplatesDir` is the `templates/` directory shipped with the overstory
+ * package (two levels up from this file: `src/commands/../../templates`).
+ *
+ * Exported for unit-testing.
+ */
+export function resolveSbxKitPaths(opts: {
+	noSandbox?: boolean;
+	kit?: string[];
+	addKit?: string[];
+	manifestKits?: string[];
+	pkgTemplatesDir?: string;
+}): string[] {
+	if (opts.noSandbox) return [];
+
+	const templateDir =
+		opts.pkgTemplatesDir ?? join(import.meta.dir, "..", "..", "templates");
+	const sbxKitsDir = join(templateDir, "sbx-kits");
+
+	let base: string[];
+	if (opts.kit && opts.kit.length > 0) {
+		// --kit replaces the manifest list entirely.
+		base = [...opts.kit];
+	} else {
+		// Resolve manifest kit names to absolute package paths.
+		base = (opts.manifestKits ?? []).map((name) => join(sbxKitsDir, name));
+	}
+
+	// --add-kit appends (regardless of whether --kit or manifest provided the base).
+	if (opts.addKit && opts.addKit.length > 0) {
+		base = [...base, ...opts.addKit];
+	}
+
+	return base;
 }
 
 const WORKABLE_STATUSES = ["open", "in_progress"] as const;
@@ -945,6 +1008,18 @@ export async function slingCommand(taskId: string, opts: SlingOptions): Promise<
 
 			// Resolve runtime before overlayConfig so we can pass runtime.instructionPath
 			const runtime = getRuntime(opts.runtime, config, capability);
+
+			// For the sbx runtime, resolve kit paths from manifest + CLI overrides
+			// and configure the runtime before it provisions the VM.
+			if (runtime instanceof ClaudeSbxRuntime) {
+				const kitPaths = resolveSbxKitPaths({
+					noSandbox: opts.noSandbox,
+					kit: opts.kit,
+					addKit: opts.addKit,
+					manifestKits: agentDef.sandbox?.kits,
+				});
+				runtime.setKitPaths(kitPaths);
+			}
 
 			// Runtime-specific worktree preparation (e.g., Copilot folder trust)
 			if (runtime.prepareWorktree) {

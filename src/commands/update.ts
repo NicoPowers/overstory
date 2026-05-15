@@ -1,5 +1,5 @@
 /**
- * CLI command: ov update [--agents] [--manifest] [--hooks] [--dry-run] [--json]
+ * CLI command: ov update [--agents] [--manifest] [--hooks] [--sbx-kits] [--dry-run] [--json]
  *
  * Refreshes .overstory/ managed files from the installed npm package without
  * requiring a full `ov init`. Distinct from `ov upgrade` (which updates the
@@ -11,6 +11,7 @@
  * - hooks.json
  * - .gitignore
  * - README.md
+ * - sbx-kits/ (when --sbx-kits or no granular flags)
  *
  * Does NOT touch: config.yaml, config.local.yaml, SQLite databases,
  * agents/, worktrees/, specs/, logs/, or .claude/settings.local.json.
@@ -35,6 +36,7 @@ export interface UpdateOptions {
 	agents?: boolean;
 	manifest?: boolean;
 	hooks?: boolean;
+	sbxKits?: boolean;
 	dryRun?: boolean;
 	json?: boolean;
 }
@@ -46,6 +48,7 @@ interface UpdateResult {
 	agentDefs: { updated: string[]; unchanged: string[] };
 	manifest: { updated: boolean };
 	hooks: { updated: boolean };
+	sbxKits: { updated: string[]; unchanged: string[] };
 	gitignore: { updated: boolean };
 	readme: { updated: boolean };
 }
@@ -69,10 +72,11 @@ export async function executeUpdate(opts: UpdateOptions): Promise<void> {
 	}
 
 	// Determine what to refresh. No flags = refresh all.
-	const hasGranularFlags = opts.agents || opts.manifest || opts.hooks;
+	const hasGranularFlags = opts.agents || opts.manifest || opts.hooks || opts.sbxKits;
 	const doAgents = hasGranularFlags ? (opts.agents ?? false) : true;
 	const doManifest = hasGranularFlags ? (opts.manifest ?? false) : true;
 	const doHooks = hasGranularFlags ? (opts.hooks ?? false) : true;
+	const doSbxKits = hasGranularFlags ? (opts.sbxKits ?? false) : true;
 	const doGitignore = !hasGranularFlags;
 	const doReadme = !hasGranularFlags;
 
@@ -80,6 +84,7 @@ export async function executeUpdate(opts: UpdateOptions): Promise<void> {
 		agentDefs: { updated: [], unchanged: [] },
 		manifest: { updated: false },
 		hooks: { updated: false },
+		sbxKits: { updated: [], unchanged: [] },
 		gitignore: { updated: false },
 		readme: { updated: false },
 	};
@@ -163,7 +168,47 @@ export async function executeUpdate(opts: UpdateOptions): Promise<void> {
 		}
 	}
 
-	// 4. Refresh .gitignore
+	// 4. Refresh sbx-kits
+	if (doSbxKits) {
+		const sourceKitsDir = join(import.meta.dir, "..", "..", "templates", "sbx-kits");
+		const targetKitsDir = join(overstoryDir, "sbx-kits");
+
+		await mkdir(targetKitsDir, { recursive: true });
+
+		const kitNames = await readdir(sourceKitsDir);
+		for (const kitName of kitNames) {
+			const sourceKitDir = join(sourceKitsDir, kitName);
+			const targetKitDir = join(targetKitsDir, kitName);
+			await mkdir(targetKitDir, { recursive: true });
+
+			const kitFiles = await readdir(sourceKitDir);
+			for (const fileName of kitFiles) {
+				const sourceContent = await Bun.file(join(sourceKitDir, fileName)).text();
+				const targetPath = join(targetKitDir, fileName);
+				const targetFile = Bun.file(targetPath);
+
+				let needsUpdate = true;
+				if (await targetFile.exists()) {
+					const existing = await targetFile.text();
+					if (existing === sourceContent) {
+						needsUpdate = false;
+					}
+				}
+
+				const relPath = `sbx-kits/${kitName}/${fileName}`;
+				if (needsUpdate) {
+					if (!dryRun) {
+						await Bun.write(targetPath, sourceContent);
+					}
+					result.sbxKits.updated.push(relPath);
+				} else {
+					result.sbxKits.unchanged.push(relPath);
+				}
+			}
+		}
+	}
+
+	// 5. Refresh .gitignore
 	if (doGitignore) {
 		const gitignorePath = join(overstoryDir, ".gitignore");
 		const gitignoreFile = Bun.file(gitignorePath);
@@ -234,6 +279,13 @@ export async function executeUpdate(opts: UpdateOptions): Promise<void> {
 		}
 	}
 
+	if (result.sbxKits.updated.length > 0) {
+		anyChanged = true;
+		for (const f of result.sbxKits.updated) {
+			printSuccess(prefix, f);
+		}
+	}
+
 	if (result.gitignore.updated) {
 		anyChanged = true;
 		printSuccess(prefix, ".gitignore");
@@ -255,6 +307,7 @@ export function createUpdateCommand(): Command {
 		.option("--agents", "Refresh agent definition files only")
 		.option("--manifest", "Refresh agent-manifest.json only")
 		.option("--hooks", "Refresh hooks.json only")
+		.option("--sbx-kits", "Refresh sbx kit files in .overstory/sbx-kits/ only")
 		.option("--dry-run", "Show what would change without writing")
 		.option("--json", "Output as JSON")
 		.action(async (opts: UpdateOptions) => {

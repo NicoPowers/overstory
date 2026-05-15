@@ -111,6 +111,23 @@ function validateAgentDefinition(name: string, raw: unknown): string[] {
 		}
 	}
 
+	if (def.sandbox !== undefined) {
+		if (def.sandbox === null || typeof def.sandbox !== "object") {
+			errors.push(`Agent "${name}": "sandbox" must be an object`);
+		} else {
+			const sb = def.sandbox as Record<string, unknown>;
+			if (!Array.isArray(sb.kits)) {
+				errors.push(`Agent "${name}": "sandbox.kits" must be an array`);
+			} else {
+				for (let i = 0; i < sb.kits.length; i++) {
+					if (typeof sb.kits[i] !== "string") {
+						errors.push(`Agent "${name}": "sandbox.kits[${i}]" must be a string`);
+					}
+				}
+			}
+		}
+	}
+
 	return errors;
 }
 

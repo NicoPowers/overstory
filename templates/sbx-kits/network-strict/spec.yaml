@@ -1,0 +1,12 @@
+schemaVersion: "1"
+kind: mixin
+name: overstory-network-strict
+displayName: Overstory Network Strict
+description: |
+  Restricts outbound network to api.anthropic.com only.
+  Applied to scout, reviewer, and merger agents that have no legitimate
+  reason to reach npm registries or GitHub.
+
+network:
+  allowedDomains:
+    - api.anthropic.com
