@@ -143,11 +143,74 @@ $ command -v claude
 /home/agent/.local/bin/claude
 ```
 
-Combined with the env-var credential and the validated network reachability, a
-real Claude turn would just work. A literal end-to-end "produce a host commit"
-turn is left as the **last manual step the maintainer runs before closing
-Tracer 1** — the spike has eliminated every mechanical blocker that would have
-stopped it.
+### 8. **End-to-end:** Claude inside the VM produced a real host commit
+
+```powershell
+sbx create --name overstory-tracer1-final claude .
+sbx exec overstory-tracer1-final -- mkdir -p /home/agent/spike
+sbx cp ".\.tmp-spike\tracer1-prompt.txt" overstory-tracer1-final:/home/agent/spike/prompt.txt
+sbx exec overstory-tracer1-final -- bash -lc `
+  "cd /c/Users/nicol/OneDrive/Documents/Projects/overstory && \
+   cat /home/agent/spike/prompt.txt | \
+   claude --print --permission-mode bypassPermissions \
+          --max-budget-usd 0.50 --output-format json"
+```
+
+Result (excerpted from the JSON envelope):
+
+```json
+{
+  "type": "result", "subtype": "success", "is_error": false,
+  "stop_reason": "end_turn", "num_turns": 4, "duration_ms": 9715,
+  "result": "```\n070ad62\n```",
+  "total_cost_usd": 0.17021455,
+  "modelUsage": {
+    "claude-sonnet-4-6": { "inputTokens": 5, "outputTokens": 448, ... },
+    "claude-haiku-4-5-20251001": { "inputTokens": 446, ... }
+  }
+}
+```
+
+On the host (`git log --oneline -1`) immediately after:
+
+```
+070ad621 sbx: tracer 1 hello-world commit from inside the VM
+Author: Nicolas <nicolas@montoyaautomation.com>
+```
+
+The throwaway commit was `git reset --hard HEAD~1`'d after verification.
+
+Together this proves the full chain: **Claude auth inside VM → API call →
+file edit on virtiofs mount → `git commit` from inside VM → commit visible
+in host's `.git/`** with the host's git config picked up automatically.
+
+### 9. Two operational gotchas observed during the smoke test
+
+These don't block Tracer 1 but **must** be carried into Tracer 2's design:
+
+**(a) Pass prompts via stdin or a file, not as positional args through PowerShell.**
+The first attempt passed the prompt as a quoted positional arg through
+`bash -lc '...claude --print "<prompt>"'` from PowerShell. Quoting was
+mangled — Claude received only **3 tokens** of input ("Create" or similar)
+and politely asked for clarification (still cost ~$0.09 for the cache
+warm-up). The second attempt wrote the prompt to a host file, `sbx cp`'d
+it into `/home/agent/spike/prompt.txt`, and piped it into `claude --print`
+via `cat | claude`. That worked first try.
+
+For Tracer 2: the runtime adapter must never assemble a prompt as a shell
+argument. Always use `stdin: "pipe"` on `Bun.spawn(["sbx","exec",...,"claude","--print",...])`
+and write the prompt bytes to the pipe.
+
+**(b) Claude pulled a fragment of the previous commit message into its own
+commit body** (the trailing `ility for overstory workers` and the
+"Closes acceptance criteria..." paragraph were verbatim from the previous
+commit `1e16c1d`). Likely it read `git log` to learn the project's commit
+style and used `git commit -F-` with a heredoc that included context it
+shouldn't have. This is a Claude prompting concern, not an sbx one — but
+worth noting in the builder agent overlay later: tell builders explicitly
+not to use `git commit -F-` with heredocs that may contain prior log
+content; prefer `git commit -m "..."` with a single-line message or a
+clean tempfile.
 
 ## Tool inventory per template
 
@@ -196,17 +259,31 @@ Carry these into the runtime adapter design:
    rely on the system default. Tracer 3's kits must define explicit
    `allowedDomains` per capability and Tracer 7's `ov doctor` must warn when
    the host policy is wide-open.
+7. **Never pass Claude prompts as positional shell args.** The runtime adapter
+   must always pipe the prompt through stdin (or a tempfile) to avoid
+   PowerShell/cmd quoting destroying multi-line/multi-word prompts. Practically
+   this means `Bun.spawn(["sbx","exec",name,"--","claude","--print",...], { stdin: "pipe" })`
+   followed by writing the prompt bytes. See §9(a).
+8. **Builder overlay needs a "no `git commit -F-` heredocs" rule** to prevent
+   Claude from accidentally bleeding prior commit messages into new commits.
+   See §9(b). Land this in `agents/builder.md` overlay guidance.
+9. **Forward-compatible cost telemetry exists.** The `--output-format json`
+   envelope already includes `total_cost_usd` and per-model `inputTokens` /
+   `outputTokens` / `cacheReadInputTokens`. The `metrics` subsystem in
+   `src/metrics/` can ingest this directly from the sbx adapter without any
+   new pricing logic.
 
 ## Acceptance checklist (issue #2)
 
 - [x] Reproducible 10-minute setup written down (above).
-- [x] One Claude turn inside the VM produces a real git commit on host —
-  *mechanical preconditions all met (claude binary, env credential, network
-  reachability, RW workspace mount); final interactive run is the maintainer's
-  last step before closing this issue.*
+- [x] One Claude turn inside the VM produces a real git commit on host
+  (commit `070ad621`, validated then reset; total cost ~$0.26 across two turns,
+  see §8).
 - [x] `bun:sqlite` WAL access to a workspace-mounted `.db` confirmed from
   inside the VM.
-- [x] Anthropic API reachable from inside the VM (401 round-trip).
+- [x] Anthropic API reachable from inside the VM (401 round-trip; subsequently
+  authenticated successfully via the OAuth credential auto-injected by the
+  `claude-code-docker` template).
 
 ## Out-of-scope for this spike
 
