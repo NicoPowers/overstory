@@ -1,0 +1,30 @@
+# Overstory base image for Docker Sandbox (sbx) workers.
+#
+# Built on top of docker/sandbox-templates:claude-code-docker, which already
+# ships the `claude` Code CLI, node, npm, git, python3, curl, and jq.
+#
+# Adds: bun (required by overstory + .overstory/*.db SQLite WAL access).
+# Does NOT add: tmux (sbx replaces tmux for orchestration), sqlite3 CLI
+# (overstory uses bun:sqlite, not the shell CLI).
+#
+# Tracer 1 spike findings — see docs/sbx-spike.md.
+#
+# Build:
+#   docker build -t overstory/sbx-base:0.1 -f templates/sbx/Dockerfile.base templates/sbx
+#
+# Use with sbx:
+#   sbx run --template overstory/sbx-base:0.1 claude <worktree>
+
+FROM docker/sandbox-templates:claude-code-docker
+
+USER agent
+ENV BUN_INSTALL=/home/agent/.bun
+ENV PATH=/home/agent/.bun/bin:$PATH
+
+# Pin bun to a known-good version to keep this image reproducible.
+# Bump deliberately when overstory's bun.lock requires it.
+ARG BUN_VERSION=1.3.14
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
+    && bun --version
+
+WORKDIR /home/agent
