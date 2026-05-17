@@ -4,11 +4,11 @@
 //
 // Uses Pi's ExtensionAPI factory style: export default function(pi: ExtensionAPI) { ... }
 // pi.on("tool_call", ...) returns { block: true, reason } to prevent tool execution.
-// pi.exec("ov", [...]) calls the overstory CLI for activity tracking.
+// pi.exec("ov", [...]) calls the overstory CLI for activity tracking and lifecycle.
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const AGENT_NAME = "coordinator";
-const WORKTREE_PATH = "/Users/jayminwest/Projects/os-eco/overstory";
+const WORKTREE_PATH = "/home/ubuntu/overstory";
 
 // Native team/task tools blocked (all agents) — use ov sling for delegation.
 // Safety net: Pi does not use Claude Code team tool names natively.
@@ -143,7 +143,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event) => {
 		// Activity tracking: update lastActivity so watchdog knows agent is alive.
 		// Fire-and-forget — do not await (avoids latency on every tool call).
-		pi.exec("ov", ["log", "tool-start", "--agent", AGENT_NAME]).catch(() => {});
+		pi.exec("ov", ["log", "tool-start", "--agent", AGENT_NAME, "--tool-name", event.toolName]).catch(() => {});
 
 		// 1. Block native team/task tools (all agents).
 		if (TEAM_BLOCKED.has(event.toolName)) {
@@ -235,15 +235,28 @@ export default function (pi: ExtensionAPI) {
 	 * Tool execution end: fire-and-forget "ov log tool-end" for event tracking.
 	 * Paired with tool_call's tool-start fire for proper begin/end event logging.
 	 */
-	pi.on("tool_execution_end", async (_event) => {
-		pi.exec("ov", ["log", "tool-end", "--agent", AGENT_NAME]).catch(() => {});
+	pi.on("tool_execution_end", async (event) => {
+		pi.exec("ov", ["log", "tool-end", "--agent", AGENT_NAME, "--tool-name", event.toolName]).catch(() => {});
 	});
 
 	/**
-	 * Session shutdown: log session-end so the agent transitions to "completed" state.
+	 * Agent end: log session-end when the agentic loop completes (task done).
 	 *
-	 * Awaited so it completes before Pi exits. Without this call, the agent stays in
-	 * "booting" or "working" state forever, requiring manual cleanup or watchdog termination.
+	 * Awaited so it completes before Pi moves on. Without this handler, completed
+	 * Pi agents never transition to "completed" state in the SessionStore, causing
+	 * the watchdog to escalate them through stalled → nudge → triage → terminate.
+	 *
+	 * Fires when the agent finishes its work — before session_shutdown.
+	 */
+	pi.on("agent_end", async (_event) => {
+		await pi.exec("ov", ["log", "session-end", "--agent", AGENT_NAME]).catch(() => {});
+	});
+
+	/**
+	 * Session shutdown: safety-net session-end log for non-graceful exits.
+	 *
+	 * Awaited so it completes before Pi exits. Kept as a fallback in case
+	 * agent_end does not fire (e.g., crash, force-kill, Ctrl+C before task completes).
 	 *
 	 * Fires on Ctrl+C, Ctrl+D, or SIGTERM.
 	 */
