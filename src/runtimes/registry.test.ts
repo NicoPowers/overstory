@@ -43,6 +43,16 @@ describe("getRuntime", () => {
 		expect(runtime).toBeInstanceOf(ClaudeRuntime);
 	});
 
+	it("executor.default does not affect runtime resolution", () => {
+		const config = {
+			runtime: { default: "claude" },
+			executor: { default: "burrow-pi" },
+		} as unknown as OverstoryConfig;
+		const runtime = getRuntime(undefined, config);
+		expect(runtime).toBeInstanceOf(ClaudeRuntime);
+		expect(runtime.id).toBe("claude");
+	});
+
 	it("resolves codex runtime from config default", () => {
 		const config = { runtime: { default: "codex" } } as OverstoryConfig;
 		const runtime = getRuntime(undefined, config);

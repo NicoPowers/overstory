@@ -6,6 +6,7 @@ import type {
 	QualityGate,
 	TaskTrackerBackend,
 } from "./types.ts";
+import { SUPPORTED_EXECUTORS } from "./types.ts";
 
 // Module-level project root override (set by --project global flag)
 let _projectRootOverride: string | undefined;
@@ -75,6 +76,15 @@ export const DEFAULT_CONFIG: OverstoryConfig = {
 	merge: {
 		aiResolveEnabled: true,
 		reimagineEnabled: false,
+	},
+	executor: {
+		default: "local",
+		capabilities: {},
+		burrowPi: {
+			command: "burrow-pi",
+			profile: "default",
+			endpoint: "http://127.0.0.1:9315",
+		},
 	},
 	providers: {
 		anthropic: { type: "native" },
@@ -660,6 +670,51 @@ function validateConfig(config: OverstoryConfig): void {
 			field: "taskTracker.backend",
 			value: config.taskTracker.backend,
 		});
+	}
+
+	// executor routing: validate executor backend names and Burrow-Pi settings
+	if (config.executor !== undefined) {
+		const supportedExecutors = [...SUPPORTED_EXECUTORS].join(", ");
+		if (!SUPPORTED_EXECUTORS.includes(config.executor.default)) {
+			throw new ValidationError(`executor.default must be one of: ${supportedExecutors}`, {
+				field: "executor.default",
+				value: config.executor.default,
+			});
+		}
+
+		if (config.executor.capabilities) {
+			for (const [cap, executorName] of Object.entries(config.executor.capabilities)) {
+				if (executorName !== undefined && !SUPPORTED_EXECUTORS.includes(executorName)) {
+					throw new ValidationError(
+						`executor.capabilities.${cap} must be one of: ${supportedExecutors}`,
+						{
+							field: `executor.capabilities.${cap}`,
+							value: executorName,
+						},
+					);
+				}
+			}
+		}
+
+		if (
+			typeof config.executor.burrowPi.command !== "string" ||
+			config.executor.burrowPi.command.trim().length === 0
+		) {
+			throw new ValidationError("executor.burrowPi.command must be a non-empty string", {
+				field: "executor.burrowPi.command",
+				value: config.executor.burrowPi.command,
+			});
+		}
+
+		for (const key of ["profile", "endpoint", "authTokenEnv"] as const) {
+			const value = config.executor.burrowPi[key];
+			if (value !== undefined && typeof value !== "string") {
+				throw new ValidationError(`executor.burrowPi.${key} must be a string when set`, {
+					field: `executor.burrowPi.${key}`,
+					value,
+				});
+			}
+		}
 	}
 
 	// providers: validate each entry
