@@ -1,12 +1,12 @@
 import { dirname, join, resolve } from "node:path";
 import { ConfigError, ValidationError } from "./errors.ts";
-import { SUPPORTED_EXECUTORS } from "./types.ts";
 import type {
 	CoordinatorExitTriggers,
 	OverstoryConfig,
 	QualityGate,
 	TaskTrackerBackend,
 } from "./types.ts";
+import { SUPPORTED_EXECUTORS } from "./types.ts";
 
 // Module-level project root override (set by --project global flag)
 let _projectRootOverride: string | undefined;
@@ -676,13 +676,10 @@ function validateConfig(config: OverstoryConfig): void {
 	if (config.executor !== undefined) {
 		const supportedExecutors = [...SUPPORTED_EXECUTORS].join(", ");
 		if (!SUPPORTED_EXECUTORS.includes(config.executor.default)) {
-			throw new ValidationError(
-				`executor.default must be one of: ${supportedExecutors}`,
-				{
-					field: "executor.default",
-					value: config.executor.default,
-				},
-			);
+			throw new ValidationError(`executor.default must be one of: ${supportedExecutors}`, {
+				field: "executor.default",
+				value: config.executor.default,
+			});
 		}
 
 		if (config.executor.capabilities) {
