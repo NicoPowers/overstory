@@ -37,6 +37,39 @@ export interface PiRuntimeConfig {
 /** Backend for the task tracker. Defined here for use in OverstoryConfig. */
 export type TaskTrackerBackend = "auto" | "seeds" | "beads";
 
+// === Executor ===
+
+/** All supported executor backends for non-runtime task execution. */
+export const SUPPORTED_EXECUTORS = ["local", "burrow-pi"] as const;
+
+/** Union type derived from SUPPORTED_EXECUTORS. */
+export type ExecutorName = (typeof SUPPORTED_EXECUTORS)[number];
+
+/**
+ * Bridge settings for routing execution through Burrow-Pi.
+ * This is config-only in overstory-f637; adapter wiring comes later.
+ */
+export interface BurrowPiExecutorConfig {
+	/** Command invoked to bridge execution to Burrow-Pi. */
+	command: string;
+	/** Optional profile name to forward to Burrow-Pi. */
+	profile?: string;
+	/** Optional endpoint/base URL for a Burrow-Pi bridge service. */
+	endpoint?: string;
+	/** Optional environment variable name containing bridge auth token. */
+	authTokenEnv?: string;
+}
+
+/** Executor routing config, separate from AI runtime routing. */
+export interface ExecutorConfig {
+	/** Default executor backend for capability without explicit override. */
+	default: ExecutorName;
+	/** Per-capability executor overrides. */
+	capabilities?: Partial<Record<string, ExecutorName>>;
+	/** Burrow-Pi bridge settings. */
+	burrowPi: BurrowPiExecutorConfig;
+}
+
 // === Project Configuration ===
 
 /**
@@ -119,6 +152,11 @@ export interface OverstoryConfig {
 		/** Conditions that trigger automatic coordinator shutdown. */
 		exitTriggers: CoordinatorExitTriggers;
 	};
+	/**
+	 * Executor routing for non-runtime task execution backends.
+	 * Separate from runtime (AI agent process) selection.
+	 */
+	executor?: ExecutorConfig;
 	runtime?: {
 		/** Default runtime adapter name (default: "claude"). */
 		default: string;

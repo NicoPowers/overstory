@@ -39,7 +39,7 @@ import { openSessionStore } from "../sessions/compat.ts";
 import { createRunStore } from "../sessions/store.ts";
 import type { TrackerIssue } from "../tracker/factory.ts";
 import { createTrackerClient, resolveBackend, trackerCliName } from "../tracker/factory.ts";
-import type { AgentSession, OverlayConfig, OverstoryConfig } from "../types.ts";
+import type { AgentSession, ExecutorName, OverlayConfig, OverstoryConfig } from "../types.ts";
 import { createWorktree, rollbackWorktree } from "../worktree/manager.ts";
 import {
 	capturePaneContent,
@@ -576,6 +576,16 @@ export function resolveUseHeadless(
 	}
 
 	return false;
+}
+
+/**
+ * Resolve the configured executor backend for a capability.
+ *
+ * This is intentionally config-only for overstory-f637. Runtime spawning still
+ * routes through AI runtimes; executor adapter wiring lands in a later task.
+ */
+export function resolveExecutorName(config: OverstoryConfig, capability: string): ExecutorName {
+	return config.executor?.capabilities?.[capability] ?? config.executor?.default ?? "local";
 }
 
 /**

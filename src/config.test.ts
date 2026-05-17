@@ -46,6 +46,8 @@ describe("loadConfig", () => {
 		expect(config.mulch.enabled).toBe(true);
 		expect(config.mulch.primeFormat).toBe("markdown");
 		expect(config.logging.verbose).toBe(false);
+		expect(config.executor?.default).toBe("local");
+		expect(config.executor?.burrowPi.command).toBe("burrow-pi");
 	});
 
 	test("sets project.name from directory name", async () => {
@@ -82,6 +84,29 @@ project:
 
 		const config = await loadConfig(tempDir);
 		expect(config.project.root).toBe(tempDir);
+	});
+
+	test("parses and merges executor config", async () => {
+		await ensureOverstoryDir();
+		await writeConfig(`
+executor:
+  default: burrow-pi
+  capabilities:
+    builder: local
+    reviewer: burrow-pi
+  burrowPi:
+    command: bp-bridge
+    profile: ci
+`);
+
+		const config = await loadConfig(tempDir);
+		expect(config.executor?.default).toBe("burrow-pi");
+		expect(config.executor?.capabilities?.builder).toBe("local");
+		expect(config.executor?.capabilities?.reviewer).toBe("burrow-pi");
+		expect(config.executor?.burrowPi.command).toBe("bp-bridge");
+		expect(config.executor?.burrowPi.profile).toBe("ci");
+		// Non-overridden Burrow-Pi fields are preserved from defaults.
+		expect(config.executor?.burrowPi.endpoint).toBe("http://127.0.0.1:9315");
 	});
 
 	test("parses boolean values correctly", async () => {
@@ -547,6 +572,42 @@ mulch:
 taskTracker:
   backend: invalid
   enabled: true
+`);
+		await expect(loadConfig(tempDir)).rejects.toThrow(ValidationError);
+	});
+
+	test("rejects invalid executor.default", async () => {
+		await writeConfig(`
+executor:
+  default: remote
+`);
+		await expect(loadConfig(tempDir)).rejects.toThrow(ValidationError);
+	});
+
+	test("rejects invalid executor.capabilities.<cap>", async () => {
+		await writeConfig(`
+executor:
+  capabilities:
+    builder: remote
+`);
+		await expect(loadConfig(tempDir)).rejects.toThrow(ValidationError);
+	});
+
+	test("rejects empty executor.burrowPi.command", async () => {
+		await writeConfig(`
+executor:
+  burrowPi:
+    command: ""
+`);
+		await expect(loadConfig(tempDir)).rejects.toThrow(ValidationError);
+	});
+
+	test("rejects non-string optional executor.burrowPi settings", async () => {
+		await writeConfig(`
+executor:
+  burrowPi:
+    command: burrow-pi
+    endpoint: 123
 `);
 		await expect(loadConfig(tempDir)).rejects.toThrow(ValidationError);
 	});
@@ -1489,6 +1550,7 @@ describe("DEFAULT_CONFIG", () => {
 		expect(DEFAULT_CONFIG.taskTracker).toBeDefined();
 		expect(DEFAULT_CONFIG.mulch).toBeDefined();
 		expect(DEFAULT_CONFIG.merge).toBeDefined();
+		expect(DEFAULT_CONFIG.executor).toBeDefined();
 		expect(DEFAULT_CONFIG.providers).toBeDefined();
 		expect(DEFAULT_CONFIG.watchdog).toBeDefined();
 		expect(DEFAULT_CONFIG.models).toBeDefined();
@@ -1509,6 +1571,12 @@ describe("DEFAULT_CONFIG", () => {
 		expect(DEFAULT_CONFIG.watchdog.tier0IntervalMs).toBe(30_000);
 		expect(DEFAULT_CONFIG.watchdog.staleThresholdMs).toBe(300_000);
 		expect(DEFAULT_CONFIG.watchdog.zombieThresholdMs).toBe(600_000);
+	});
+
+	test("includes default executor config", () => {
+		expect(DEFAULT_CONFIG.executor?.default).toBe("local");
+		expect(DEFAULT_CONFIG.executor?.burrowPi.command).toBe("burrow-pi");
+		expect(DEFAULT_CONFIG.executor?.burrowPi.profile).toBe("default");
 	});
 
 	test("includes default qualityGates", () => {
